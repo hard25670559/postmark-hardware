@@ -1,225 +1,236 @@
-#include "Arduino.h"
-#include "TFT_eSPI.h" /* Please use the TFT library provided in the library. */
-#include "img_logo.h"
-#include "pin_config.h"
+#include <TFT_eSPI.h>
+#include <RotaryEncoder.h>
+#include <WiFi.h>
+#include <ArduinoJson.h>
+#include <AsyncTCP.h>
+#include <Button2.h>
 
-/* The product now has two screens, and the initialization code needs a small change in the new version. The LCD_MODULE_CMD_1 is used to define the
- * switch macro. */
-#define LCD_MODULE_CMD_1
 
-TFT_eSPI tft = TFT_eSPI();
-#define WAIT 1000
-unsigned long targetTime = 0; // Used for testing draw times
+// #define LED_PIN     1
+// #define BUTTON_PIN  2
 
-#if defined(LCD_MODULE_CMD_1)
-typedef struct {
-  uint8_t cmd;
-  uint8_t data[14];
-  uint8_t len;
-} lcd_cmd_t;
+#define SWITCH      1
+#define BUTTON      10
+Button2 btn = Button2(SWITCH);
+Button2 btn2 = Button2(BUTTON);
 
-lcd_cmd_t lcd_st7789v[] = {
-    {0x11, {0}, 0 | 0x80},
-    {0x3A, {0X05}, 1},
-    {0xB2, {0X0B, 0X0B, 0X00, 0X33, 0X33}, 5},
-    {0xB7, {0X75}, 1},
-    {0xBB, {0X28}, 1},
-    {0xC0, {0X2C}, 1},
-    {0xC2, {0X01}, 1},
-    {0xC3, {0X1F}, 1},
-    {0xC6, {0X13}, 1},
-    {0xD0, {0XA7}, 1},
-    {0xD0, {0XA4, 0XA1}, 2},
-    {0xD6, {0XA1}, 1},
-    {0xE0, {0XF0, 0X05, 0X0A, 0X06, 0X06, 0X03, 0X2B, 0X32, 0X43, 0X36, 0X11, 0X10, 0X2B, 0X32}, 14},
-    {0xE1, {0XF0, 0X08, 0X0C, 0X0B, 0X09, 0X24, 0X2B, 0X22, 0X43, 0X38, 0X15, 0X16, 0X2F, 0X37}, 14},
-};
-#endif
+#define DT          2
+#define CLK         3
+
+#define SCREEN_WIDTH  320
+#define SCREEN_HEIGHT 170
+
+#define FONT_SIZE 3
+
+#define debug(message) Serial.println(message);
+
+TFT_eSPI tft;
+RotaryEncoder encoder(DT, CLK, RotaryEncoder::LatchMode::TWO03);
+
+int buttonState;            // current state of the button
+int lastButtonState = LOW;  // previous state of the button
+unsigned long lastDebounceTime = 0;  // the last time the output pin was toggled
+unsigned long debounceDelay = 50;
 
 void setup() {
-  pinMode(PIN_POWER_ON, OUTPUT);
-  digitalWrite(PIN_POWER_ON, HIGH);
+  Serial.begin(115200); // 初始化Serial
+  tft.init();
 
-  Serial.begin(115200);
-  Serial.println("Hello T-Display-S3");
+  pinMode(SWITCH, INPUT_PULLUP);
+  pinMode(BUTTON, INPUT_PULLUP);
+  btn.setPressedHandler(sendRequest);
+  btn2.setPressedHandler(setBackgroundColor);
 
-  tft.begin();
-
-#if defined(LCD_MODULE_CMD_1)
-  for (uint8_t i = 0; i < (sizeof(lcd_st7789v) / sizeof(lcd_cmd_t)); i++) {
-    tft.writecommand(lcd_st7789v[i].cmd);
-    for (int j = 0; j < lcd_st7789v[i].len & 0x7f; j++) {
-      tft.writedata(lcd_st7789v[i].data[j]);
-    }
-
-    if (lcd_st7789v[i].len & 0x80) {
-      delay(120);
-    }
-  }
-#endif
-
-  tft.setRotation(3);
-  tft.setSwapBytes(true);
-  tft.pushImage(0, 0, 320, 170, (uint16_t *)img_logo);
-  delay(2000);
-
-  ledcSetup(0, 2000, 8);
-  ledcAttachPin(PIN_LCD_BL, 0);
-  ledcWrite(0, 255);
+  // connectToWiFi();
 }
 
+bool status = true;
+int count = 0;
+int fontSize = 0;
+
+void showOptions(String options[]) {
+  tft.setRotation(1);
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setTextSize(fontSize);
+  tft.setCursor(0, 0);
+  debug("FontSize: " + String(fontSize) + "\tFontHeight: " + tft.fontHeight());
+  fontSize++;
+
+  for (int i = 0; i < options->length(); i++) {
+    tft.println(options[i]);
+  }
+}
+
+void showMessage(String message) {
+  tft.fillScreen(TFT_BLACK); // 填滿黑色背景
+  tft.setTextColor(TFT_WHITE); // 文字白色
+  tft.setTextSize(1); // 文字大小
+  tft.setCursor(20, 50); // 設定文字起始位置
+  tft.drawString(message, 0, 0, 2);
+}
+
+String wifiStatus(wl_status_t status) {
+  String statusStr = "None";
+  switch(status) {
+    case(255):
+      statusStr = "WL_NO_SHIELD";
+      break;
+    case(0):
+      statusStr = "WL_IDLE_STATUS";
+      break;
+    case(1):
+      statusStr = "WL_NO_SSID_AVAIL";
+      break;
+    case(2):
+      statusStr = "WL_SCAN_COMPLETED";
+      break;
+    case(3):
+      statusStr = "WL_CONNECTED";
+      break;
+    case(4):
+      statusStr = "WL_CONNECT_FAILED";
+      break;
+    case(5):
+      statusStr = "WL_CONNECTION_LOST";
+      break;
+    case(6):
+      statusStr = "WL_DISCONNECTED";
+      break;
+  }
+
+  return statusStr;
+}
+
+bool connectToWiFi() {
+  WiFi.disconnect(true); //關閉網絡
+  WiFi.begin("45Y077988", "0925027069");
+
+  while(WiFi.status() != WL_CONNECTED) {
+    String status = wifiStatus(WiFi.status());
+    delay(1000);
+    Serial.println("Connecting..." + status);
+    showMessage("Connecting..." + status);
+  }
+  Serial.println("Connected to WiFi:" + wifiStatus(WiFi.status()));
+  String ip = WiFi.localIP().toString().c_str();
+  Serial.println("IP: " + ip);
+  showMessage("IP: " + ip);
+
+  return true;
+}
+
+void handleRequest() {
+  AsyncClient *client = new AsyncClient;
+  client->onError([](void *arg, AsyncClient *client, int error) {
+    Serial.println("Error connecting to server");
+    client->close();
+  }, NULL);
+
+  client->onConnect([](void *arg, AsyncClient *client) {
+    Serial.println("Connected to server");
+    DynamicJsonDocument doc(1024);
+    doc["action"] = "from esp32";
+
+    String jsonString;
+    serializeJson(doc, jsonString);
+    String postRequest =
+      String("POST /api/postmarks HTTP/1.1\r\n") +
+      String("Host: 192.168.1.110:8199\r\n") +
+      String("Content-Type: application/json\r\n") +
+      String("Content-Length: ") + String(jsonString.length()) + String("\r\n") +
+      String("Connection: close\r\n\r\n") + jsonString;
+
+    client->write(postRequest.c_str(), postRequest.length());
+
+  }, NULL);
+
+  client->onData([](void *arg, AsyncClient *client, void *data, size_t len) {
+    String message = String((char*)data);
+    Serial.println(message);
+    showMessage("Success at ");
+  }, NULL);
+
+  client->onDisconnect([](void *arg, AsyncClient *client) {
+    Serial.println("Disconnected from server");
+    delete client;
+  }, NULL);
+
+  client->connect("192.168.1.110", 8199);
+}
+
+void scanWiFi() {
+  WiFi.mode(WIFI_STA);
+
+  Serial.println("Scanning available WiFi networks...");
+  int networkCount = WiFi.scanNetworks();
+  Serial.println("Network count: " + String(networkCount));
+
+  if (networkCount) {
+    Serial.printf("%d available WiFi networks found:\n", networkCount);
+    for (int i = 0; i < networkCount; i++) {
+      Serial.printf("%d: %s (%ddBm)\n", i+1, WiFi.SSID(i).c_str(), WiFi.RSSI(i));
+    }
+  }
+}
+
+void whenPressTheButton(void (*callback)()) {
+  int reading = digitalRead(SWITCH);
+  if (reading != lastButtonState) {
+    lastDebounceTime = millis();
+  }
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    if (reading != buttonState) {
+      buttonState = reading;
+      if (buttonState == LOW) {
+        int newPos = (int)(encoder.getDirection());
+        Serial.println(
+          "Button pressed!" +
+          String(newPos) +
+          ";"
+        );
+        callback();
+      }
+    }
+  }
+  lastButtonState = reading;
+}
+
+void whenSpinTheRotaryEncoder() {
+  static int pos = 0;
+
+  encoder.tick();
+  int newPos = encoder.getPosition();
+  if (pos != newPos) {
+    showMessage(String(newPos));
+    Serial.print("pos:");
+    Serial.print(newPos);
+    Serial.print(" dir:");
+    Serial.println((int)(encoder.getDirection()));
+    pos = newPos;
+  }
+}
+
+void sendRequest(Button2& btn) {
+
+  String options[] = {"aaaa", "bbbbb", "ccccc", "ddddd"};
+  showOptions(options);
+  // if (WiFi.status() == WL_CONNECTED) {
+  //   handleRequest();
+  // } else {
+  //   Serial.println("No connection!");
+  // }
+}
+
+
+void setBackgroundColor(Button2& btn) {
+  tft.fillScreen(TFT_GREEN);
+}
+
+
 void loop() {
-  targetTime = millis();
-
-  // First we test them with a background colour set
-  tft.setTextSize(1);
-  tft.fillScreen(TFT_BLACK);
-  tft.setTextColor(TFT_GREEN, TFT_BLACK);
-
-  tft.drawString(" !\"#$%&'()*+,-./0123456", 0, 0, 2);
-  tft.drawString("789:;<=>?@ABCDEFGHIJKL", 0, 16, 2);
-  tft.drawString("MNOPQRSTUVWXYZ[\\]^_`", 0, 32, 2);
-  tft.drawString("abcdefghijklmnopqrstuvw", 0, 48, 2);
-  int xpos = 0;
-  xpos += tft.drawString("xyz{|}~", 0, 64, 2);
-  tft.drawChar(127, xpos, 64, 2);
-  delay(WAIT);
-
-  tft.fillScreen(TFT_BLACK);
-  tft.setTextColor(TFT_GREEN, TFT_BLACK);
-
-  tft.drawString(" !\"#$%&'()*+,-.", 0, 0, 4);
-  tft.drawString("/0123456789:;", 0, 26, 4);
-  tft.drawString("<=>?@ABCDE", 0, 52, 4);
-  tft.drawString("FGHIJKLMNO", 0, 78, 4);
-  tft.drawString("PQRSTUVWX", 0, 104, 4);
-  delay(WAIT);
-
-  tft.fillScreen(TFT_BLACK);
-  tft.drawString("YZ[\\]^_`abc", 0, 0, 4);
-  tft.drawString("defghijklmno", 0, 26, 4);
-  tft.drawString("pqrstuvwxyz", 0, 52, 4);
-  xpos = 0;
-  xpos += tft.drawString("{|}~", 0, 78, 4);
-  tft.drawChar(127, xpos, 78, 4);
-  delay(WAIT);
-
-  tft.fillScreen(TFT_BLACK);
-  tft.setTextColor(TFT_BLUE, TFT_BLACK);
-
-  tft.drawString("012345", 0, 0, 6);
-  tft.drawString("6789", 0, 40, 6);
-  tft.drawString("apm-:.", 0, 80, 6);
-  delay(WAIT);
-
-  tft.fillScreen(TFT_BLACK);
-  tft.setTextColor(TFT_RED, TFT_BLACK);
-
-  tft.drawString("0123", 0, 0, 7);
-  tft.drawString("4567", 0, 60, 7);
-  delay(WAIT);
-
-  tft.fillScreen(TFT_BLACK);
-  tft.drawString("890:.", 0, 0, 7);
-  tft.drawString("", 0, 60, 7);
-  delay(WAIT);
-
-  tft.fillScreen(TFT_BLACK);
-  tft.setTextColor(TFT_YELLOW, TFT_BLACK);
-
-  tft.drawString("01", 0, 0, 8);
-  delay(WAIT);
-
-  tft.drawString("23", 0, 0, 8);
-  delay(WAIT);
-
-  tft.drawString("45", 0, 0, 8);
-  delay(WAIT);
-
-  tft.drawString("67", 0, 0, 8);
-  delay(WAIT);
-
-  tft.drawString("89", 0, 0, 8);
-  delay(WAIT);
-
-  tft.drawString("0:.", 0, 0, 8);
-  delay(WAIT);
-
-  tft.setTextColor(TFT_MAGENTA);
-  tft.drawNumber(millis() - targetTime, 0, 100, 4);
-  delay(4000);
-
-  // Now test them with transparent background
-  targetTime = millis();
-
-  tft.setTextSize(1);
-  tft.fillScreen(TFT_BROWN);
-  tft.setTextColor(TFT_GREEN);
-
-  tft.drawString(" !\"#$%&'()*+,-./0123456", 0, 0, 2);
-  tft.drawString("789:;<=>?@ABCDEFGHIJKL", 0, 16, 2);
-  tft.drawString("MNOPQRSTUVWXYZ[\\]^_`", 0, 32, 2);
-  tft.drawString("abcdefghijklmnopqrstuvw", 0, 48, 2);
-  xpos = 0;
-  xpos += tft.drawString("xyz{|}~", 0, 64, 2);
-  tft.drawChar(127, xpos, 64, 2);
-  delay(WAIT);
-
-  tft.fillScreen(TFT_BROWN);
-  tft.setTextColor(TFT_GREEN);
-
-  tft.drawString(" !\"#$%&'()*+,-.", 0, 0, 4);
-  tft.drawString("/0123456789:;", 0, 26, 4);
-  tft.drawString("<=>?@ABCDE", 0, 52, 4);
-  tft.drawString("FGHIJKLMNO", 0, 78, 4);
-  tft.drawString("PQRSTUVWX", 0, 104, 4);
-
-  delay(WAIT);
-  tft.fillScreen(TFT_BROWN);
-  tft.drawString("YZ[\\]^_`abc", 0, 0, 4);
-  tft.drawString("defghijklmno", 0, 26, 4);
-  tft.drawString("pqrstuvwxyz", 0, 52, 4);
-  xpos = 0;
-  xpos += tft.drawString("{|}~", 0, 78, 4);
-  tft.drawChar(127, xpos, 78, 4);
-  delay(WAIT);
-
-  tft.fillScreen(TFT_BROWN);
-  tft.setTextColor(TFT_BLUE);
-
-  tft.drawString("012345", 0, 0, 6);
-  tft.drawString("6789", 0, 40, 6);
-  tft.drawString("apm-:.", 0, 80, 6);
-  delay(WAIT);
-
-  tft.fillScreen(TFT_BROWN);
-  tft.setTextColor(TFT_RED);
-
-  tft.drawString("0123", 0, 0, 7);
-  tft.drawString("4567", 0, 60, 7);
-  delay(WAIT);
-
-  tft.fillScreen(TFT_BROWN);
-  tft.drawString("890:.", 0, 0, 7);
-  tft.drawString("", 0, 60, 7);
-  delay(WAIT);
-
-  tft.fillScreen(TFT_BROWN);
-  tft.setTextColor(TFT_YELLOW);
-
-  tft.drawString("0123", 0, 0, 8);
-  delay(WAIT);
-
-  tft.fillScreen(TFT_BROWN);
-  tft.drawString("4567", 0, 0, 8);
-  delay(WAIT);
-
-  tft.fillScreen(TFT_BROWN);
-  tft.drawString("890:.", 0, 0, 8);
-  delay(WAIT);
-
-  tft.setTextColor(TFT_MAGENTA);
-
-  tft.drawNumber(millis() - targetTime, 0, 100, 4);
-  delay(4000);
+  btn.loop();
+  btn2.loop();
+  whenSpinTheRotaryEncoder();
+  count++;
 }
