@@ -22,8 +22,11 @@ Button2 btn2 = Button2(BUTTON);
 
 #define FONT_SIZE 3
 
+#if false
 #define debug(message) Serial.println(message);
-
+#else
+#define debug(message)
+#endif
 TFT_eSPI tft;
 RotaryEncoder encoder(DT, CLK, RotaryEncoder::LatchMode::TWO03);
 
@@ -35,11 +38,22 @@ unsigned long debounceDelay = 50;
 void setup() {
   Serial.begin(115200); // 初始化Serial
   tft.init();
+  scanWiFi();
 
   pinMode(SWITCH, INPUT_PULLUP);
   pinMode(BUTTON, INPUT_PULLUP);
+  for(int i=0 ; i<100 ; i++) {
+    // tft.fillScreen(TFT_WHITE);
+    // delay(100);
+    // tft.fillScreen(TFT_BLACK);
+    // delay(100);
+    switchOption();
+    delay(10);
+  }
   btn.setPressedHandler(sendRequest);
-  btn2.setPressedHandler(setBackgroundColor);
+  btn2.setPressedHandler(pressedHandler);
+
+
 
   // connectToWiFi();
 }
@@ -49,17 +63,70 @@ int count = 0;
 int fontSize = 0;
 
 void showOptions(String options[]) {
+  debug(tft.fontHeight());
   tft.setRotation(1);
   tft.fillScreen(TFT_BLACK);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.setTextSize(fontSize);
+  tft.setTextSize(4);
   tft.setCursor(0, 0);
   debug("FontSize: " + String(fontSize) + "\tFontHeight: " + tft.fontHeight());
-  fontSize++;
 
   for (int i = 0; i < options->length(); i++) {
     tft.println(options[i]);
+    int y = i == 0 ? 3 : 3 + i * 36;
+    debug("y: " + String(y));
+    tft.drawString(options[i], 0, y);
   }
+}
+
+String options[] = {
+  "aaaaaa",
+  "bbbbbb",
+  "cccccc",
+  "dddddd",
+};
+
+int yCollect[] = {
+  3,
+  39,
+  75,
+  111,
+};
+
+int target = 0;
+
+void showFixedOptions() {
+  debug(tft.fontHeight());
+  tft.setRotation(1);
+  tft.fillScreen(TFT_BLACK);
+
+  tft.setTextSize(4);
+  tft.setCursor(0, 0);
+  debug("FontSize: " + String(fontSize) + "\tFontHeight: " + tft.fontHeight());
+
+  tft.setTextColor(
+    target == 0 ? TFT_BLACK : TFT_WHITE,
+    target == 0 ? TFT_WHITE : TFT_BLACK
+  );
+  tft.drawString(String(options[0]) + String(yCollect[0]), 0, yCollect[0]);
+
+  tft.setTextColor(
+    target == 1 ? TFT_BLACK : TFT_WHITE,
+    target == 1 ? TFT_WHITE : TFT_BLACK
+  );
+  tft.drawString(String(options[1]) + String(yCollect[1]), 0, yCollect[1]);
+
+  tft.setTextColor(
+    target == 2 ? TFT_BLACK : TFT_WHITE,
+    target == 2 ? TFT_WHITE : TFT_BLACK
+  );
+  tft.drawString(String(options[2]) + String(yCollect[2]), 0, yCollect[2]);
+
+  tft.setTextColor(
+    target == 3 ? TFT_BLACK : TFT_WHITE,
+    target == 3 ? TFT_WHITE : TFT_BLACK
+  );
+  tft.drawString(String(options[3]) + String(yCollect[3]), 0, yCollect[3]);
 }
 
 void showMessage(String message) {
@@ -169,7 +236,13 @@ void scanWiFi() {
   if (networkCount) {
     Serial.printf("%d available WiFi networks found:\n", networkCount);
     for (int i = 0; i < networkCount; i++) {
-      Serial.printf("%d: %s (%ddBm)\n", i+1, WiFi.SSID(i).c_str(), WiFi.RSSI(i));
+      Serial.printf(
+        "MAC:%s\t%d: %s (%ddBm)\n",
+        WiFi.macAddress(),
+        i+1,
+        WiFi.SSID(i).c_str(),
+        WiFi.RSSI(i)
+      );
     }
   }
 }
@@ -202,17 +275,23 @@ void whenSpinTheRotaryEncoder() {
   encoder.tick();
   int newPos = encoder.getPosition();
   if (pos != newPos) {
-    showMessage(String(newPos));
+    // showMessage(String(newPos));
     Serial.print("pos:");
     Serial.print(newPos);
     Serial.print(" dir:");
-    Serial.println((int)(encoder.getDirection()));
+    int dir = (int)(encoder.getDirection());
+    Serial.println(dir);
+
+    yCollect[target] = yCollect[target] + dir;
+    showFixedOptions();
+
     pos = newPos;
   }
 }
 
 void sendRequest(Button2& btn) {
 
+  fontSize++;
   String options[] = {"aaaa", "bbbbb", "ccccc", "ddddd"};
   showOptions(options);
   // if (WiFi.status() == WL_CONNECTED) {
@@ -223,14 +302,21 @@ void sendRequest(Button2& btn) {
 }
 
 
-void setBackgroundColor(Button2& btn) {
-  tft.fillScreen(TFT_GREEN);
+void pressedHandler(Button2& btn) {
+  // fontSize--;
+  // String options[] = {"aaaa", "bbbbb", "ccccc", "ddddd"};
+  // showOptions(options);
+  switchOption();
 }
 
+void switchOption() {
+  target = target == 3 ? 0 : target + 1;
+  showFixedOptions();
+}
 
 void loop() {
   btn.loop();
   btn2.loop();
   whenSpinTheRotaryEncoder();
-  count++;
+
 }
