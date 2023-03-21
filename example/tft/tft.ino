@@ -5,6 +5,7 @@
 #include <AsyncTCP.h>
 #include <Button2.h>
 
+#include <vector>
 
 // #define LED_PIN     1
 // #define BUTTON_PIN  2
@@ -22,7 +23,7 @@ Button2 btn2 = Button2(BUTTON);
 
 #define FONT_SIZE 3
 
-#if false
+#if true
 #define debug(message) Serial.println(message);
 #else
 #define debug(message)
@@ -35,14 +36,34 @@ int lastButtonState = LOW;  // previous state of the button
 unsigned long lastDebounceTime = 0;  // the last time the output pin was toggled
 unsigned long debounceDelay = 50;
 
+std::vector<String> options = {
+  "aaaaaa",
+  "bbbbbb",
+  "cccccc",
+  "dddddd",
+  "eeeeee",
+  "ffffff",
+  "gggggg",
+};
+
+int yCollect[] = {
+  3,
+  39,
+  75,
+  111,
+};
+
+int target = 0;
+
 void setup() {
   Serial.begin(115200); // 初始化Serial
   tft.init();
   scanWiFi();
+  delay(1000);
 
-  pinMode(SWITCH, INPUT_PULLUP);
-  pinMode(BUTTON, INPUT_PULLUP);
-  for(int i=0 ; i<100 ; i++) {
+  // pinMode(SWITCH, INPUT_PULLUP);
+  // pinMode(BUTTON, INPUT_PULLUP);
+  for(int i=0 ; i<10 ; i++) {
     // tft.fillScreen(TFT_WHITE);
     // delay(100);
     // tft.fillScreen(TFT_BLACK);
@@ -52,8 +73,6 @@ void setup() {
   }
   btn.setPressedHandler(sendRequest);
   btn2.setPressedHandler(pressedHandler);
-
-
 
   // connectToWiFi();
 }
@@ -79,24 +98,9 @@ void showOptions(String options[]) {
   }
 }
 
-String options[] = {
-  "aaaaaa",
-  "bbbbbb",
-  "cccccc",
-  "dddddd",
-};
-
-int yCollect[] = {
-  3,
-  39,
-  75,
-  111,
-};
-
-int target = 0;
-
 void showFixedOptions() {
-  debug(tft.fontHeight());
+
+
   tft.setRotation(1);
   tft.fillScreen(TFT_BLACK);
 
@@ -235,7 +239,10 @@ void scanWiFi() {
 
   if (networkCount) {
     Serial.printf("%d available WiFi networks found:\n", networkCount);
+    options.resize(networkCount);
+
     for (int i = 0; i < networkCount; i++) {
+      options[i] = WiFi.SSID(i).c_str();
       Serial.printf(
         "MAC:%s\t%d: %s (%ddBm)\n",
         WiFi.macAddress(),
@@ -245,6 +252,8 @@ void scanWiFi() {
       );
     }
   }
+
+  showFixedOptions();
 }
 
 void whenPressTheButton(void (*callback)()) {
@@ -290,10 +299,29 @@ void whenSpinTheRotaryEncoder() {
 }
 
 void sendRequest(Button2& btn) {
+  debug("---------before---------");
+  std::vector<String> items = {"a", "b", "c"};
 
-  fontSize++;
-  String options[] = {"aaaa", "bbbbb", "ccccc", "ddddd"};
-  showOptions(options);
+  for (auto &item: items) {
+    debug("Item before: " + item);
+  }
+  debug("---------after---------");
+
+  items = {"s", "d", "w"};
+
+  for (auto &item: items) {
+    debug("Item after: " + item);
+  }
+  debug("---------start---------");
+  for (auto &option: options) {
+    debug("Option: " + option);
+  }
+  debug("---------End---------");
+
+
+  // fontSize++;
+  // String options[] = {"aaaa", "bbbbb", "ccccc", "ddddd"};
+  // showOptions(options);
   // if (WiFi.status() == WL_CONNECTED) {
   //   handleRequest();
   // } else {
