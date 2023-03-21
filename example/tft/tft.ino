@@ -58,16 +58,10 @@ int target = 0;
 void setup() {
   Serial.begin(115200); // 初始化Serial
   tft.init();
-  scanWiFi();
-  delay(1000);
 
   // pinMode(SWITCH, INPUT_PULLUP);
   // pinMode(BUTTON, INPUT_PULLUP);
   for(int i=0 ; i<10 ; i++) {
-    // tft.fillScreen(TFT_WHITE);
-    // delay(100);
-    // tft.fillScreen(TFT_BLACK);
-    // delay(100);
     switchOption();
     delay(10);
   }
@@ -299,26 +293,7 @@ void whenSpinTheRotaryEncoder() {
 }
 
 void sendRequest(Button2& btn) {
-  debug("---------before---------");
-  std::vector<String> items = {"a", "b", "c"};
-
-  for (auto &item: items) {
-    debug("Item before: " + item);
-  }
-  debug("---------after---------");
-
-  items = {"s", "d", "w"};
-
-  for (auto &item: items) {
-    debug("Item after: " + item);
-  }
-  debug("---------start---------");
-  for (auto &option: options) {
-    debug("Option: " + option);
-  }
-  debug("---------End---------");
-
-
+  scanWiFi();
   // fontSize++;
   // String options[] = {"aaaa", "bbbbb", "ccccc", "ddddd"};
   // showOptions(options);
