@@ -55,47 +55,30 @@ int yCollect[] = {
 
 int target = 0;
 
-void setup() {
-  Serial.begin(115200); // 初始化Serial
-  tft.init();
-
-  // pinMode(SWITCH, INPUT_PULLUP);
-  // pinMode(BUTTON, INPUT_PULLUP);
-  for(int i=0 ; i<10 ; i++) {
-    switchOption();
-    delay(10);
-  }
-  btn.setPressedHandler(sendRequest);
-  btn2.setPressedHandler(pressedHandler);
-
-  // connectToWiFi();
-}
-
 bool status = true;
 int count = 0;
 int fontSize = 0;
 
-void showOptions(String options[]) {
+void showOptions(std::vector<String> options) {
   debug(tft.fontHeight());
-  tft.setRotation(1);
+  tft.setRotation(3);
   tft.fillScreen(TFT_BLACK);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft.setTextSize(4);
   tft.setCursor(0, 0);
   debug("FontSize: " + String(fontSize) + "\tFontHeight: " + tft.fontHeight());
 
-  for (int i = 0; i < options->length(); i++) {
-    tft.println(options[i]);
+  for (int i = 0; i < options.size(); i++) {
     int y = i == 0 ? 3 : 3 + i * 36;
-    debug("y: " + String(y));
-    tft.drawString(options[i], 0, y);
+    debug(String(i) + ". " + options[i] + String(y));
+    tft.drawString(String(i) + ". " + options[i] + String(y), 0, y);
   }
 }
 
 void showFixedOptions() {
 
 
-  tft.setRotation(1);
+  tft.setRotation(3);
   tft.fillScreen(TFT_BLACK);
 
   tft.setTextSize(4);
@@ -238,8 +221,7 @@ void scanWiFi() {
     for (int i = 0; i < networkCount; i++) {
       options[i] = WiFi.SSID(i).c_str();
       Serial.printf(
-        "MAC:%s\t%d: %s (%ddBm)\n",
-        WiFi.macAddress(),
+        "%d: %s (%ddBm)\n",
         i+1,
         WiFi.SSID(i).c_str(),
         WiFi.RSSI(i)
@@ -317,9 +299,29 @@ void switchOption() {
   showFixedOptions();
 }
 
+
+void setup() {
+  Serial.begin(115200); // 初始化Serial
+  tft.init();
+
+
+  scanWiFi();
+  showOptions(options);
+
+  // pinMode(SWITCH, INPUT_PULLUP);
+  // pinMode(BUTTON, INPUT_PULLUP);
+  // for(int i=0 ; i<10 ; i++) {
+  //   switchOption();
+  //   delay(10);
+  // }
+  btn.setPressedHandler(sendRequest);
+  btn2.setPressedHandler(pressedHandler);
+
+  // connectToWiFi();
+}
+
 void loop() {
   btn.loop();
   btn2.loop();
   whenSpinTheRotaryEncoder();
-
 }
