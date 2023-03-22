@@ -5,6 +5,8 @@
 #include <AsyncTCP.h>
 #include <Button2.h>
 
+#include <FreeRTOS.h>
+
 #include <vector>
 
 // #define LED_PIN     1
@@ -13,15 +15,15 @@
 #define SWITCH      1
 #define BUTTON      10
 Button2 btn = Button2(SWITCH);
-Button2 btn2 = Button2(BUTTON);
+// Button2 btn2 = Button2(BUTTON);
 
-#define DT          2
-#define CLK         3
+// #define DT          2
+// #define CLK         3
 
-#define SCREEN_WIDTH  320
-#define SCREEN_HEIGHT 170
+// #define SCREEN_WIDTH  320
+// #define SCREEN_HEIGHT 170
 
-#define FONT_SIZE 3
+// #define FONT_SIZE 3
 
 #if true
 #define debug(message) Serial.println(message);
@@ -29,22 +31,14 @@ Button2 btn2 = Button2(BUTTON);
 #define debug(message)
 #endif
 TFT_eSPI tft;
-RotaryEncoder encoder(DT, CLK, RotaryEncoder::LatchMode::TWO03);
+// RotaryEncoder encoder(DT, CLK, RotaryEncoder::LatchMode::TWO03);
 
-int buttonState;            // current state of the button
-int lastButtonState = LOW;  // previous state of the button
-unsigned long lastDebounceTime = 0;  // the last time the output pin was toggled
-unsigned long debounceDelay = 50;
+// int buttonState;            // current state of the button
+// int lastButtonState = LOW;  // previous state of the button
+// unsigned long lastDebounceTime = 0;  // the last time the output pin was toggled
+// unsigned long debounceDelay = 50;
 
-std::vector<String> options = {
-  "aaaaaa",
-  "bbbbbb",
-  "cccccc",
-  "dddddd",
-  "eeeeee",
-  "ffffff",
-  "gggggg",
-};
+std::vector<String> options = {};
 
 int yCollect[] = {
   3,
@@ -61,7 +55,7 @@ int fontSize = 0;
 
 void showOptions(std::vector<String> options) {
   debug(tft.fontHeight());
-  tft.setRotation(3);
+  tft.setRotation(1);
   tft.fillScreen(TFT_BLACK);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft.setTextSize(4);
@@ -75,44 +69,45 @@ void showOptions(std::vector<String> options) {
   }
 }
 
-void showFixedOptions() {
+// void showFixedOptions() {
 
 
-  tft.setRotation(3);
-  tft.fillScreen(TFT_BLACK);
+//   tft.setRotation(1);
+//   tft.fillScreen(TFT_BLACK);
 
-  tft.setTextSize(4);
-  tft.setCursor(0, 0);
-  debug("FontSize: " + String(fontSize) + "\tFontHeight: " + tft.fontHeight());
+//   tft.setTextSize(4);
+//   tft.setCursor(0, 0);
+//   debug("FontSize: " + String(fontSize) + "\tFontHeight: " + tft.fontHeight());
 
-  tft.setTextColor(
-    target == 0 ? TFT_BLACK : TFT_WHITE,
-    target == 0 ? TFT_WHITE : TFT_BLACK
-  );
-  tft.drawString(String(options[0]) + String(yCollect[0]), 0, yCollect[0]);
+//   tft.setTextColor(
+//     target == 0 ? TFT_BLACK : TFT_WHITE,
+//     target == 0 ? TFT_WHITE : TFT_BLACK
+//   );
+//   tft.drawString(String(options[0]) + String(yCollect[0]), 0, yCollect[0]);
 
-  tft.setTextColor(
-    target == 1 ? TFT_BLACK : TFT_WHITE,
-    target == 1 ? TFT_WHITE : TFT_BLACK
-  );
-  tft.drawString(String(options[1]) + String(yCollect[1]), 0, yCollect[1]);
+//   tft.setTextColor(
+//     target == 1 ? TFT_BLACK : TFT_WHITE,
+//     target == 1 ? TFT_WHITE : TFT_BLACK
+//   );
+//   tft.drawString(String(options[1]) + String(yCollect[1]), 0, yCollect[1]);
 
-  tft.setTextColor(
-    target == 2 ? TFT_BLACK : TFT_WHITE,
-    target == 2 ? TFT_WHITE : TFT_BLACK
-  );
-  tft.drawString(String(options[2]) + String(yCollect[2]), 0, yCollect[2]);
+//   tft.setTextColor(
+//     target == 2 ? TFT_BLACK : TFT_WHITE,
+//     target == 2 ? TFT_WHITE : TFT_BLACK
+//   );
+//   tft.drawString(String(options[2]) + String(yCollect[2]), 0, yCollect[2]);
 
-  tft.setTextColor(
-    target == 3 ? TFT_BLACK : TFT_WHITE,
-    target == 3 ? TFT_WHITE : TFT_BLACK
-  );
-  tft.drawString(String(options[3]) + String(yCollect[3]), 0, yCollect[3]);
-}
+//   tft.setTextColor(
+//     target == 3 ? TFT_BLACK : TFT_WHITE,
+//     target == 3 ? TFT_WHITE : TFT_BLACK
+//   );
+//   tft.drawString(String(options[3]) + String(yCollect[3]), 0, yCollect[3]);
+// }
 
 void showMessage(String message) {
   tft.fillScreen(TFT_BLACK); // 填滿黑色背景
   tft.setTextColor(TFT_WHITE); // 文字白色
+  tft.setRotation(1);
   tft.setTextSize(1); // 文字大小
   tft.setCursor(20, 50); // 設定文字起始位置
   tft.drawString(message, 0, 0, 2);
@@ -207,75 +202,76 @@ void handleRequest() {
   client->connect("192.168.1.110", 8199);
 }
 
-void scanWiFi() {
+void scanWiFi(void *param) {
   WiFi.mode(WIFI_STA);
 
-  Serial.println("Scanning available WiFi networks...");
-  int networkCount = WiFi.scanNetworks();
-  Serial.println("Network count: " + String(networkCount));
-
-  if (networkCount) {
-    Serial.printf("%d available WiFi networks found:\n", networkCount);
-    options.resize(networkCount);
-
-    for (int i = 0; i < networkCount; i++) {
-      options[i] = WiFi.SSID(i).c_str();
-      Serial.printf(
-        "%d: %s (%ddBm)\n",
-        i+1,
-        WiFi.SSID(i).c_str(),
-        WiFi.RSSI(i)
-      );
-    }
+  // tft.println("Scanning available WiFi networks...");
+  int networkCount = WiFi.scanNetworks(true);
+  while(WiFi.scanComplete() < 0) {
+    debug("Status: " + String(WiFi.scanComplete()));
   }
+  // tft.println("Network count: " + String(WiFi.scanComplete()));
 
-  showFixedOptions();
+  // if (networkCount) {
+  //   Serial.printf("%d available WiFi networks found:\n", networkCount);
+  //   options.resize(networkCount);
+
+  //   for (int i = 0; i < networkCount; i++) {
+  //     options[i] = WiFi.SSID(i).c_str();
+  //     Serial.printf(
+  //       "%d: %s (%ddBm)\n",
+  //       i+1,
+  //       WiFi.SSID(i).c_str(),
+  //       WiFi.RSSI(i)
+  //     );
+  //   }
+  // }
 }
 
-void whenPressTheButton(void (*callback)()) {
-  int reading = digitalRead(SWITCH);
-  if (reading != lastButtonState) {
-    lastDebounceTime = millis();
-  }
-  if ((millis() - lastDebounceTime) > debounceDelay) {
-    if (reading != buttonState) {
-      buttonState = reading;
-      if (buttonState == LOW) {
-        int newPos = (int)(encoder.getDirection());
-        Serial.println(
-          "Button pressed!" +
-          String(newPos) +
-          ";"
-        );
-        callback();
-      }
-    }
-  }
-  lastButtonState = reading;
-}
+// void whenPressTheButton(void (*callback)()) {
+//   int reading = digitalRead(SWITCH);
+//   if (reading != lastButtonState) {
+//     lastDebounceTime = millis();
+//   }
+//   if ((millis() - lastDebounceTime) > debounceDelay) {
+//     if (reading != buttonState) {
+//       buttonState = reading;
+//       if (buttonState == LOW) {
+//         int newPos = (int)(encoder.getDirection());
+//         Serial.println(
+//           "Button pressed!" +
+//           String(newPos) +
+//           ";"
+//         );
+//         callback();
+//       }
+//     }
+//   }
+//   lastButtonState = reading;
+// }
 
-void whenSpinTheRotaryEncoder() {
-  static int pos = 0;
+// void whenSpinTheRotaryEncoder() {
+//   static int pos = 0;
 
-  encoder.tick();
-  int newPos = encoder.getPosition();
-  if (pos != newPos) {
-    // showMessage(String(newPos));
-    Serial.print("pos:");
-    Serial.print(newPos);
-    Serial.print(" dir:");
-    int dir = (int)(encoder.getDirection());
-    Serial.println(dir);
+//   encoder.tick();
+//   int newPos = encoder.getPosition();
+//   if (pos != newPos) {
+//     // showMessage(String(newPos));
+//     Serial.print("pos:");
+//     Serial.print(newPos);
+//     Serial.print(" dir:");
+//     int dir = (int)(encoder.getDirection());
+//     Serial.println(dir);
 
-    yCollect[target] = yCollect[target] + dir;
-    showFixedOptions();
+//     yCollect[target] = yCollect[target] + dir;
+//     showFixedOptions();
 
-    pos = newPos;
-  }
-}
+//     pos = newPos;
+//   }
+// }
 
 void sendRequest(Button2& btn) {
-  scanWiFi();
+  // scanWiFi();
   // fontSize++;
   // String options[] = {"aaaa", "bbbbb", "ccccc", "ddddd"};
   // showOptions(options);
@@ -296,17 +292,37 @@ void pressedHandler(Button2& btn) {
 
 void switchOption() {
   target = target == 3 ? 0 : target + 1;
-  showFixedOptions();
+  showOptions(options);
 }
 
+void testTask1(void *param) {
+  while(true) {
+    debug("----1");
+  }
+}
+
+void testTask2(void *param) {
+  while(true) {
+    debug("2----");
+  }
+}
 
 void setup() {
   Serial.begin(115200); // 初始化Serial
+  tft.begin();
   tft.init();
+  tft.fillScreen(TFT_BLACK);
+  tft.setRotation(1);
+  tft.setTextSize(2);
 
+  // int a = xTaskCreate(testTask1, "testTask1", 1000, NULL, 1, NULL);
+  // int b = xTaskCreate(testTask2, "testTask2", 1000, NULL, 1, NULL);
 
-  scanWiFi();
-  showOptions(options);
+  int c = xTaskCreate(scanWiFi, "scanWiFi", 1000, NULL, 1, NULL);
+
+  // showOptions(options);
+  // tft.printf("A:%d B:%d C:%d", a, b, c);
+  tft.printf("C:%d", c);
 
   // pinMode(SWITCH, INPUT_PULLUP);
   // pinMode(BUTTON, INPUT_PULLUP);
@@ -314,14 +330,19 @@ void setup() {
   //   switchOption();
   //   delay(10);
   // }
-  btn.setPressedHandler(sendRequest);
-  btn2.setPressedHandler(pressedHandler);
+  // btn.setPressedHandler(sendRequest);
+  // btn2.setPressedHandler(pressedHandler);
+  // try {
 
-  // connectToWiFi();
+  //   // connectToWiFi();
+  //   throw std::exception();
+  // } catch(std::exception &e) {
+  //   debug("error");
+  // }
 }
 
 void loop() {
-  btn.loop();
-  btn2.loop();
-  whenSpinTheRotaryEncoder();
+  // btn.loop();
+  // btn2.loop();
+  // whenSpinTheRotaryEncoder();
 }
